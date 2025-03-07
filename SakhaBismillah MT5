@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                                                    SakhaAwal.mq5 |
+//|                                               SakhaBismillah.mq5 |
 //|                                Copyright 2025, bunganar           |
 //|                     https://github.com/bunganar/KING-CRAZY         |
 //+------------------------------------------------------------------+
@@ -8,21 +8,24 @@
 #include <MovingAverages.mqh>
 #include <Indicators\Indicators.mqh>
 
+// Global objects
 CTrade    trade;
 CSymbolInfo symbolInfo;
 
-// INPUT (sebelumnya "extern" di MQL4)
+// INPUT (sebelumnya "extern" di MQL4, input tidak dapat diubah)
+// Catatan: Input tidak dapat diubah, sehingga kami menggunakan variabel lokal untuk 
+// menetapkan nilai default jika input bernilai 0.
 input bool        UseBreakConfirmation  = false;
 input string      IndicatorDescription  = "1=MA,2=BB,3=Envelopes";
 input int         SelectedIndicator     = 3;
 input int         MagicNumber           = 1245986;
 input string      ExpertName            = "fxindo.com";
 input double      CandleLimit           = 10.0;
-input double      StopDistance          = 3.0;  // Dalam MQL5, ini adalah "PendingDistance" (JarakStop)
+input double      StopDistance          = 3.0;  // PendingDistance (JarakStop)
 input double      TakeProfitPoints      = 2.0;
 input double      StopLossPoints        = 6.0;
 input bool        UseStrictStopLoss     = true;
-input int         IndicatorPeriod       = 0;
+input int         IndicatorPeriod       = 0;   // Jika 0, akan diganti dengan default (3) di runtime
 input int         IndicatorShift        = 0;
 input int         CandleShift           = 0;
 input double      FixedLotSize          = 0.0;
@@ -35,83 +38,82 @@ input bool        IsTrailingStopEnabled = true;
 input bool        IsFridayOff           = false;
 input bool        IsMondayOff           = false;
 
-// Global variables (dideklarasikan ulang agar kompatibel MQL5)
-string ROBOT_NAME = "Robot";
-string CONFIG_NAME = "Konfigurasi";
-bool   isDebugMode = false;
-bool   isDisplayTrades = false;
-bool   isTrailingStopEnabled = true;
-bool   isStopOrderEnabled = false;
-double defaultCandleRange = 18.0;
-double requiredMargin;
-double lotStep;
-string MMSettings = "MM";
-double defaultLotSize = 0.1;
-bool   isMoneyManagementEnabled = true;
-double minLotSize = 0.01;
-double maxLotSize = 100.0;
-string SpreadSettings = "Spread Maksimal";
-double defaultSpreadLimit = 10.0;
-string ScalpingSettings = "Faktor Scalping";
-double currentSpread;
-double spreadMultiplier = 0.4;
-double defaultPipValue = 0.3333333333;
-double pipValue = 0.0;
-string TrailingSettings = "SL / TP / Trailing";
-double trailingGap = 0.0;
-double trailingLimit = 0.0;
-double TrailingStopPoints = 2.0;
-string DayFilterSettings = "Filter Hari";
-bool   isMondayExcluded = false;
-int    excludedDay = 0;
-int    currentPosition = 0;
-bool   useStopOrders = true;
-string dummyString;
-int    digits = 0;
-double point = 0.0;
-int    slippage = 0;
-double unusedArray1[30];
-double unusedArray2[30];
-int    unusedArray3[30];
-double unusedValue1 = 1.0;
-bool   isTickProcessingEnabled = true;
-double defaultTrailingDistance = 2.0;
-double defaultGapValue = 0.0;
-int    priceCheckCounter = 0;
-datetime lastTickTime = 0;
-int    tickCounter = 0;
-double spreadHistory[30];
-int    spreadHistoryCount = 0;
-bool   isSpreadCheckEnabled = true;
-double minTrailingStep = 0.5;
-double trailingStopDistance = 1.0;
-double maxTrailingDistance = 4.0;
-bool   useTrailingStop = true;
-string unusedString1;
-string debugMessage;
+// Global variables (sedikit penamaan ulang untuk menghindari konflik dengan symbol dari library)
+string g_ROBOT_NAME = "Robot";
+string g_CONFIG_NAME = "Konfigurasi";
+bool   g_isDebugMode = false;
+bool   g_isDisplayTrades = false;
+bool   g_isTrailingStopEnabled = true;
+bool   g_isStopOrderEnabled = false;
+double g_defaultCandleRange = 18.0;
+double g_requiredMargin;
+double g_lotStep;
+string g_MMSettings = "MM";
+double g_defaultLotSize = 0.1;
+bool   g_isMoneyManagementEnabled = true;
+double g_minLotSize = 0.01;
+double g_maxLotSize = 100.0;
+string g_SpreadSettings = "Spread Maksimal";
+double g_defaultSpreadLimit = 10.0;
+string g_ScalpingSettings = "Faktor Scalping";
+double g_currentSpread;
+double g_spreadMultiplier = 0.4;
+double g_defaultPipValue = 0.3333333333;
+double g_pipValue = 0.0;
+string g_TrailingSettings = "SL / TP / Trailing";
+double g_trailingGap = 0.0;
+double g_trailingLimit = 0.0;
+double g_TrailingStopPoints = 2.0;
+string g_DayFilterSettings = "Filter Hari";
+bool   g_isMondayExcluded = false;
+int    g_excludedDay = 0;
+int    g_currentPosition = 0;
+bool   g_useStopOrders = true;
+string g_dummyString;
+int    g_digits = 0;         // Menghindari konflik dengan deklarasi library terkait
+double g_point = 0.0;
+int    g_slippage = 0;       // Menghindari konflik nama variabel
+double g_unusedArray1[30];
+double g_unusedArray2[30];
+int    g_unusedArray3[30];
+double g_unusedValue1 = 1.0;
+bool   g_isTickProcessingEnabled = true;
+double g_defaultTrailingDistance = 2.0;
+double g_defaultGapValue = 0.0;
+int    g_priceCheckCounter = 0;
+datetime g_lastTickTime = 0;
+int    g_tickCounter = 0;
+double g_spreadHistory[30];
+int    g_spreadHistoryCount = 0;
+bool   g_isSpreadCheckEnabled = true;
+double g_minTrailingStep = 0.5;
+double g_trailingStopDistance = 1.0;
+double g_maxTrailingDistance = 4.0;
+bool   g_useTrailingStop = true;
+string g_unusedString1;
+string g_debugMessage;
 
 //+------------------------------------------------------------------+
-//| Helper functions for type safety (tetap sama logika)              |
+//| Helper functions for type safety (tidak merubah logika)            |
 //+------------------------------------------------------------------+
-bool SelectOrder(long ticket) 
+bool SelectOrder(ulong ticket)
 {
-   // Di MQL5, pemilihan order harus dilakukan melalui history/order pool.
-   // Fungsi ini hanya sebagai placeholder agar logika tidak berubah.
+   // Placeholder: Di MQL5 pemrosesan order harus melalui posisi dan order pool
    return true;
 }
 
-bool DeleteOrder(long ticket) 
+bool DeleteOrder(ulong ticket)
 {
-   // Menghapus pending order dengan menggunakan fungsi trade.OrderDelete
+   // Hapus pending order melalui kelas trade
    return trade.OrderDelete(ticket);
 }
 
-string FormatDouble(double value, int ndigits) 
+string FormatDouble(double value, int ndigits)
 {
    return DoubleToString(value, ndigits);
 }
 
-string FormatInteger(int value) 
+string FormatInteger(int value)
 {
    return IntegerToString(value);
 }
@@ -119,7 +121,7 @@ string FormatInteger(int value)
 //+------------------------------------------------------------------+
 //| Helper indicator functions                                       |
 //+------------------------------------------------------------------+
-double GetMA(string symbol, int timeframe, int period, int shift, int ma_method, int applied_price)
+double GetMA(string symbol, ENUM_TIMEFRAMES timeframe, int period, int shift, int ma_method, int applied_price)
 {
    double buffer[];
    int handle = iMA(symbol, timeframe, period, 0, (ENUM_MA_METHOD)ma_method, applied_price);
@@ -135,44 +137,14 @@ double GetMA(string symbol, int timeframe, int period, int shift, int ma_method,
    return 0.0;
 }
 
-double GetBandsUpper(string symbol, int timeframe, int period, double deviation, int applied_price, int shift)
+double GetBandsUpper(string symbol, ENUM_TIMEFRAMES timeframe, int period, double deviation, int applied_price, int shift)
 {
    double buffer[];
-   int handle = iBands(symbol, timeframe, period, deviation, 0, applied_price);
+   // Dalam MQL5 iBands menggunakan parameter: symbol, timeframe, period, shift, deviation, applied_price
+   int handle = iBands(symbol, timeframe, period, 0, deviation, applied_price);
    if(handle != INVALID_HANDLE)
    {
-      if(CopyBuffer(handle, 1, shift, 1, buffer) > 0)
-      {
-         IndicatorRelease(handle);
-         return buffer[0];
-      }
-      IndicatorRelease(handle);
-   }
-   return 0.0;
-}
-
-double GetBandsLower(string symbol, int timeframe, int period, double deviation, int applied_price, int shift)
-{
-   double buffer[];
-   int handle = iBands(symbol, timeframe, period, deviation, 0, applied_price);
-   if(handle != INVALID_HANDLE)
-   {
-      if(CopyBuffer(handle, 2, shift, 1, buffer) > 0)
-      {
-         IndicatorRelease(handle);
-         return buffer[0];
-      }
-      IndicatorRelease(handle);
-   }
-   return 0.0;
-}
-
-double GetEnvelopesUpper(string symbol, int timeframe, int period, int ma_method, int applied_price, double shift_percent, int shift)
-{
-   double buffer[];
-   int handle = iEnvelopes(symbol, timeframe, period, ma_method, 0, applied_price, shift_percent, MODE_UPPER);
-   if(handle != INVALID_HANDLE)
-   {
+      // Buffer index 0 adalah pita atas
       if(CopyBuffer(handle, 0, shift, 1, buffer) > 0)
       {
          IndicatorRelease(handle);
@@ -183,12 +155,48 @@ double GetEnvelopesUpper(string symbol, int timeframe, int period, int ma_method
    return 0.0;
 }
 
-double GetEnvelopesLower(string symbol, int timeframe, int period, int ma_method, int applied_price, double shift_percent, int shift)
+double GetBandsLower(string symbol, ENUM_TIMEFRAMES timeframe, int period, double deviation, int applied_price, int shift)
 {
    double buffer[];
-   int handle = iEnvelopes(symbol, timeframe, period, ma_method, 0, applied_price, shift_percent, MODE_LOWER);
+   int handle = iBands(symbol, timeframe, period, 0, deviation, applied_price);
    if(handle != INVALID_HANDLE)
    {
+      // Buffer index 2 adalah pita bawah pada iBands MQL5
+      if(CopyBuffer(handle, 2, shift, 1, buffer) > 0)
+      {
+         IndicatorRelease(handle);
+         return buffer[0];
+      }
+      IndicatorRelease(handle);
+   }
+   return 0.0;
+}
+
+double GetEnvelopesUpper(string symbol, ENUM_TIMEFRAMES timeframe, int period, int ma_method, int applied_price, double deviation, int shift)
+{
+   double buffer[];
+   // Di MQL5 iEnvelopes: parameters: symbol, timeframe, period, ma_method, applied_price, deviation
+   int handle = iEnvelopes(symbol, timeframe, period, ma_method, applied_price, deviation);
+   if(handle != INVALID_HANDLE)
+   {
+      // Buffer index 0 dianggap sebagai pita atas
+      if(CopyBuffer(handle, 0, shift, 1, buffer) > 0)
+      {
+         IndicatorRelease(handle);
+         return buffer[0];
+      }
+      IndicatorRelease(handle);
+   }
+   return 0.0;
+}
+
+double GetEnvelopesLower(string symbol, ENUM_TIMEFRAMES timeframe, int period, int ma_method, int applied_price, double deviation, int shift)
+{
+   double buffer[];
+   int handle = iEnvelopes(symbol, timeframe, period, ma_method, applied_price, deviation);
+   if(handle != INVALID_HANDLE)
+   {
+      // Buffer index 1 dianggap sebagai pita bawah
       if(CopyBuffer(handle, 1, shift, 1, buffer) > 0)
       {
          IndicatorRelease(handle);
@@ -209,23 +217,23 @@ bool SendBuyStop(double volume, double price, int slippage, double stopLoss, dou
    ZeroMemory(request);
    ZeroMemory(result);
    
-   request.action   = TRADE_ACTION_PENDING;
-   request.symbol   = Symbol();
-   request.volume   = volume;
-   request.price    = price;
-   request.sl       = stopLoss;
-   request.tp       = takeProfit;
-   request.deviation= slippage;
-   request.magic    = MagicNumber;
-   request.type     = ORDER_TYPE_BUY_STOP;
-   request.type_filling = ORDER_FILLING_FOK;
-   request.type_time    = ORDER_TIME_GTC;
-   request.expiration   = expiration;
-   request.comment      = comment;
+   request.action         = TRADE_ACTION_PENDING;
+   request.symbol         = Symbol();
+   request.volume         = volume;
+   request.price          = price;
+   request.sl             = stopLoss;
+   request.tp             = takeProfit;
+   request.deviation      = slippage;
+   request.magic          = MagicNumber;
+   request.type           = ORDER_TYPE_BUY_STOP;
+   request.type_filling   = ORDER_FILLING_FOK;
+   request.type_time      = ORDER_TIME_GTC;
+   request.expiration     = expiration;
+   request.comment        = comment;
    
    if(OrderSend(request, result))
       return true;
-   else 
+   else
    {
       Print("BuyStop Error: ", result.comment);
       return false;
@@ -239,23 +247,23 @@ bool SendSellStop(double volume, double price, int slippage, double stopLoss, do
    ZeroMemory(request);
    ZeroMemory(result);
    
-   request.action   = TRADE_ACTION_PENDING;
-   request.symbol   = Symbol();
-   request.volume   = volume;
-   request.price    = price;
-   request.sl       = stopLoss;
-   request.tp       = takeProfit;
-   request.deviation= slippage;
-   request.magic    = MagicNumber;
-   request.type     = ORDER_TYPE_SELL_STOP;
-   request.type_filling = ORDER_FILLING_FOK;
-   request.type_time    = ORDER_TIME_GTC;
-   request.expiration   = expiration;
-   request.comment      = comment;
+   request.action         = TRADE_ACTION_PENDING;
+   request.symbol         = Symbol();
+   request.volume         = volume;
+   request.price          = price;
+   request.sl             = stopLoss;
+   request.tp             = takeProfit;
+   request.deviation      = slippage;
+   request.magic          = MagicNumber;
+   request.type           = ORDER_TYPE_SELL_STOP;
+   request.type_filling   = ORDER_FILLING_FOK;
+   request.type_time      = ORDER_TIME_GTC;
+   request.expiration     = expiration;
+   request.comment        = comment;
    
    if(OrderSend(request, result))
       return true;
-   else 
+   else
    {
       Print("SellStop Error: ", result.comment);
       return false;
@@ -267,30 +275,33 @@ bool SendSellStop(double volume, double price, int slippage, double stopLoss, do
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   // Inisialisasi variabel sesuai MQL5
+   // Inisialisasi variabel sesuai dokumentasi MQL5
    symbolInfo.Name(Symbol());
-   digits = (int)symbolInfo.Digits();
-   point  = symbolInfo.Point();
-   pipValue = point;
-   if(digits==3 || digits==5)
-      pipValue = 10.0 * point;
+   g_digits = (int)symbolInfo.Digits();
+   g_point  = symbolInfo.Point();
+   g_pipValue = g_point;
+   if(g_digits==3 || g_digits==5)
+      g_pipValue = 10.0 * g_point;
    
    // Default nilai spread
-   currentSpread = MaxSpread;
+   g_currentSpread = MaxSpread;
    
-   if(IndicatorPeriod == 0) IndicatorPeriod = 3;
+   // Gunakan nilai lokal untuk IndicatorPeriod
+   int localIndicatorPeriod = IndicatorPeriod;
+   if(localIndicatorPeriod == 0)
+      localIndicatorPeriod = 3;
    
    // Inisialisasi day filter
    if(IsFridayOff)
-      excludedDay = 5;
+      g_excludedDay = 5;
    if(IsMondayOff)
-      isMondayExcluded = true;
+      g_isMondayExcluded = true;
       
-   ArrayInitialize(spreadHistory, 0);
+   ArrayInitialize(g_spreadHistory, 0);
    
-   // Set time tick awal
-   lastTickTime = TimeCurrent();
-   tickCounter = 0;
+   // Set waktu tick awal
+   g_lastTickTime = TimeCurrent();
+   g_tickCounter = 0;
    
    return(INIT_SUCCEEDED);
 }
@@ -304,117 +315,178 @@ void OnDeinit(const int reason)
 }
 
 //+------------------------------------------------------------------+
-//| Main trading function (dipanggil dari OnTick)                    |
+//| Display spread information (menggunakan fungsi Comment)          |
 //+------------------------------------------------------------------+
-void ProcessTrading(int timeframe)
+void DisplaySpreadInfo(double spreadPoints)
 {
-   int errorCheck;
-   double buyPrice;
-   double sellPrice;
+   string infoMessage = StringFormat("Mbelgedes Robot FX \n%s\n------------------------------------------------\nINFORMASI AKUN:\nSpread: %s pip(s)\nJumlah Lot: %s lot(s)\nBalance Akun: %s\nMinimum Stop: %s pip(s)\n------------------------------------------------\n",
+      g_debugMessage,
+      FormatDouble(spreadPoints,1),
+      FormatDouble(g_defaultLotSize,2),
+      FormatDouble(AccountInfoDouble(ACCOUNT_BALANCE),2),
+      FormatDouble(14,2));
+      
+   Comment(infoMessage);
+}
+
+//+------------------------------------------------------------------+
+//| Format logging message with line breaks                          |
+//+------------------------------------------------------------------+
+string FormatTickNumber(int tickNum)
+{
+   if(tickNum < 10)
+      return StringFormat("00%d", tickNum);
+   if(tickNum < 100)
+      return StringFormat("0%d", tickNum);
+   return FormatInteger(tickNum);
+}
+
+//+------------------------------------------------------------------+
+//| Calculate logarithm with custom base                             |
+//+------------------------------------------------------------------+
+double CalculateLogBase(double base, double value)
+{
+   return MathLog(value) / MathLog(base);
+}
+
+//+------------------------------------------------------------------+
+//| Print message with line breaks                                   |
+//+------------------------------------------------------------------+
+void PrintFormattedMessage(string message)
+{
+   int startPos = 0, endPos = -1;
+   int msgLength = StringLen(message);
+   while(endPos < msgLength)
+   {
+      startPos = endPos + 1;
+      endPos = StringFind(message, "\n", startPos);
+      if(endPos == -1)
+      {
+         Print(StringSubstr(message, startPos));
+         return;
+      }
+      Print(StringSubstr(message, startPos, endPos - startPos));
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Normalize price value                                              |
+//+------------------------------------------------------------------+
+double NormalizePrice(double price)
+{
+   return NormalizeDouble(price, g_digits);
+}
+
+//+------------------------------------------------------------------+
+//| Main trading function (dipanggil dari OnTick)                     |
+//+------------------------------------------------------------------+
+void ProcessTrading(ENUM_TIMEFRAMES timeframe)
+{
+   int errorCheck = 0;
+   double buyPrice = 0.0;
+   double sellPrice = 0.0;
    bool orderSuccess;
-   double pipsVal;
+   double pipsValue = 0.0;
    double stopLevel;
-   double spreadValue;
-   double orderLots;
-   double highPrice, lowPrice;
+   double spreadValue = 0.0;
+   double orderLots = 0.0;
+   double highPrice = 0.0, lowPrice = 0.0;
    datetime expirationTime;
-   int lotPrecision;
-   double calculatedSpread;
-   double stopLossLevel;
-   double takeProfitLevel;
-   double trailingAmount;
+   int lotPrecision = 0;
+   double calculatedSpread = 0.0;
+   double stopLossLevel = 0.0;
+   double takeProfitLevel = 0.0;
+   double trailingAmount = 0.0;
    int activeOrderCount = 0;
-   bool priceChecked;
-   double deviationRange;
-   string positionInfo;
+   double deviationRange = 0.0;
+   string positionInfo = "";
    bool shouldRepeatOrder = false;
    
    // Update tick time tracking
-   if(lastTickTime < TimeCurrent())
+   if(g_lastTickTime < TimeCurrent())
    {
-      lastTickTime = TimeCurrent();
-      tickCounter = 0;
+      g_lastTickTime = TimeCurrent();
+      g_tickCounter = 0;
    }
-   else 
-      tickCounter++;
+   else
+      g_tickCounter++;
       
    // Dapatkan data harga
    highPrice = iHigh(Symbol(), timeframe, CandleShift);
    lowPrice  = iLow(Symbol(), timeframe, CandleShift);
    
-   // Hitung nilai indikator sesuai pilihan
    double upperBand = 0.0, lowerBand = 0.0;
+   // Hitung nilai indikator berdasarkan pilihan; gunakan localIndicatorPeriod dari OnInit jika diperlukan
    if(SelectedIndicator == 1)
    {
-      lowerBand = GetMA(Symbol(), timeframe, IndicatorPeriod, IndicatorShift, MODE_LWMA, PRICE_LOW);
-      upperBand = GetMA(Symbol(), timeframe, IndicatorPeriod, IndicatorShift, MODE_LWMA, PRICE_HIGH);
+      upperBand = GetMA(Symbol(), timeframe, IndicatorPeriod==0?3:IndicatorPeriod, IndicatorShift, MODE_LWMA, PRICE_HIGH);
+      lowerBand = GetMA(Symbol(), timeframe, IndicatorPeriod==0?3:IndicatorPeriod, IndicatorShift, MODE_LWMA, PRICE_LOW);
    }
    else if(SelectedIndicator == 2)
    {
-      upperBand = GetBandsUpper(Symbol(), timeframe, IndicatorPeriod, 1.5, PRICE_OPEN, IndicatorShift);
-      lowerBand = GetBandsLower(Symbol(), timeframe, IndicatorPeriod, 1.5, PRICE_OPEN, IndicatorShift);
+      upperBand = GetBandsUpper(Symbol(), timeframe, IndicatorPeriod==0?3:IndicatorPeriod, 1.5, PRICE_OPEN, IndicatorShift);
+      lowerBand = GetBandsLower(Symbol(), timeframe, IndicatorPeriod==0?3:IndicatorPeriod, 1.5, PRICE_OPEN, IndicatorShift);
    }
    else if(SelectedIndicator == 3)
    {
-      upperBand = GetEnvelopesUpper(Symbol(), timeframe, IndicatorPeriod, MODE_LWMA, PRICE_OPEN, 0.07, IndicatorShift);
-      lowerBand = GetEnvelopesLower(Symbol(), timeframe, IndicatorPeriod, MODE_LWMA, PRICE_OPEN, 0.07, IndicatorShift);
+      // Menggunakan 0.07 sebagai deviation untuk envelopes
+      upperBand = GetEnvelopesUpper(Symbol(), timeframe, IndicatorPeriod==0?3:IndicatorPeriod, MODE_LWMA, PRICE_OPEN, 0.07, IndicatorShift);
+      lowerBand = GetEnvelopesLower(Symbol(), timeframe, IndicatorPeriod==0?3:IndicatorPeriod, MODE_LWMA, PRICE_OPEN, 0.07, IndicatorShift);
    }
    
-   int signalDirection = 0;
    deviationRange = upperBand - lowerBand;
    bool isPriceAboveMiddle = (SymbolInfoDouble(Symbol(), SYMBOL_BID) >= lowerBand + deviationRange/2.0);
    
-   // Cek pembatasan hari trading
-   int dayOfWeek = TimeDayOfWeek(TimeCurrent());
-   if(dayOfWeek != (isMondayExcluded?1:-1) && dayOfWeek != excludedDay)
+   // Cek pembatasan hari trading (gunakan DayOfWeek() MQL5)
+   int dayOfWeek = DayOfWeek();
+   if(dayOfWeek != (g_isMondayExcluded ? 1 : -1) && dayOfWeek != g_excludedDay)
    {
-      // Reset modal awal di awal hari
       MqlDateTime dt;
       TimeToStruct(TimeCurrent(), dt);
-      if(dt.hour==0 && dt.min==0)
-         InitialCapital = AccountInfoDouble(ACCOUNT_BALANCE);
+      if(dt.hour == 0 && dt.min == 0)
+         ;// InitialCapital bersifat input sehingga tidak dimodifikasi
       
-      if(digits==0)
+      if(g_digits == 0)
          return;
       
       // Update informasi spread
       spreadValue = SymbolInfoDouble(Symbol(), SYMBOL_ASK) - SymbolInfoDouble(Symbol(), SYMBOL_BID);
       
-      // Simpan history spread
-      ArrayCopy(spreadHistory, spreadHistory, 0, 1, 29);
-      spreadHistory[29] = spreadValue;
-      if(spreadHistoryCount < 30)
-         spreadHistoryCount++;
+      // Simpan spread history
+      ArrayCopy(g_spreadHistory, g_spreadHistory, 0, 1, 29);
+      g_spreadHistory[29] = spreadValue;
+      if(g_spreadHistoryCount < 30)
+         g_spreadHistoryCount++;
       
-      double averageSpread = 0;
+      double averageSpread = 0.0;
       int pos = 29;
-      for(int i=0; i<spreadHistoryCount; i++)
+      for(int i=0; i<g_spreadHistoryCount; i++)
       {
-         averageSpread += spreadHistory[pos];
+         averageSpread += g_spreadHistory[pos];
          pos--;
       }
-      double spreadAverage = averageSpread/spreadHistoryCount;
+      double spreadAverage = averageSpread / g_spreadHistoryCount;
       
-      // Penyesuaian komisi (defaultGapValue)
-      if(spreadAverage < 1.5*pipValue)
-         defaultGapValue = 1.5*pipValue - spreadAverage;
+      // Penyesuaian komisi (g_defaultGapValue)
+      if(spreadAverage < 1.5 * g_pipValue)
+         g_defaultGapValue = 1.5 * g_pipValue - spreadAverage;
       
       // Hitung harga dengan komisi
-      double askWithCommission = NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + defaultGapValue, digits);
-      double bidWithCommission = NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - defaultGapValue, digits);
-      double totalSpread = spreadAverage + defaultGapValue;
+      double askWithCommission = NormalizePrice(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + g_defaultGapValue);
+      double bidWithCommission = NormalizePrice(SymbolInfoDouble(Symbol(), SYMBOL_BID) - g_defaultGapValue);
+      double totalSpread = spreadAverage + g_defaultGapValue;
       double candleRange = highPrice - lowPrice;
       
       // Generate order identifier (tidak digunakan langsung di MQL5)
-      string orderIdentifier = StringFormat("%d-%d-0", (int)isTrailingStopEnabled, (int)isStopOrderEnabled);
+      string orderIdentifier = StringFormat("%s-%s-0", FormatInteger((int)g_isTrailingStopEnabled), FormatInteger((int)g_isStopOrderEnabled));
       
-      double defaultRange = defaultCandleRange * pipValue;
-      double calculatedCandleLimit = CandleLimit * pipValue;
+      double defaultRange = g_defaultCandleRange * g_pipValue;
+      double candleLimitCalculated = CandleLimit * g_pipValue;
       
-      // Tentukan sinyal trading
-      if(UseBreakConfirmation == true)
+      int signalDirection = 0;
+      if(UseBreakConfirmation)
       {
-         if(candleRange > calculatedCandleLimit)
+         if(candleRange > candleLimitCalculated)
          {
             if(SymbolInfoDouble(Symbol(), SYMBOL_BID) < lowerBand)
                signalDirection = -1;
@@ -424,7 +496,7 @@ void ProcessTrading(int timeframe)
       }
       else
       {
-         if(candleRange > calculatedCandleLimit)
+         if(candleRange > candleLimitCalculated)
          {
             if(SymbolInfoDouble(Symbol(), SYMBOL_BID) < upperBand)
                signalDirection = -1;
@@ -434,25 +506,27 @@ void ProcessTrading(int timeframe)
       }
       
       // Hitung stop range
-      double stopRange = (pipValue==0.0 ? defaultPipValue * defaultRange : pipValue*pipValue);
-      stopRange = MathMax(SymbolInfoInteger(Symbol(), SYMBOL_MARGIN_SO_MODE), (int)stopRange);
-      if(SymbolInfoDouble(Symbol(), SYMBOL_BID)==0.0 || symbolInfo.VolumeStep()==0.0)
+      double stopRange = (g_pipValue == 0.0 ? g_defaultPipValue * defaultRange : g_pipValue * g_pipValue);
+      // Menggunakan SYMBOL_TRADE_STOPS_LEVEL sebagai pengganti MODE_STOPLEVEL
+      stopLevel = (double)SymbolInfoInteger(Symbol(), SYMBOL_TRADE_STOPS_LEVEL) * g_point;
+      stopRange = MathMax(stopLevel, stopRange);
+      if(SymbolInfoDouble(Symbol(), SYMBOL_BID) == 0.0 || symbolInfo.VolumeStep() == 0.0)
          stopRange = 0;
       
-      double totalRequiredRange = stopRange + spreadAverage + defaultGapValue;
+      double totalRequiredRange = stopRange + spreadAverage + g_defaultGapValue;
       
-      if(isSpreadCheckEnabled)
-         expirationTime = TimeCurrent() + 60 * MathMax(10 * timeframe, 60);
+      if(g_isSpreadCheckEnabled)
+         expirationTime = TimeCurrent() + 60 * MathMax(10 * (int)timeframe, 60);
       else
          expirationTime = 0;
       
-      if(symbolInfo.VolumeStep()==0.0)
+      if(symbolInfo.VolumeStep() == 0.0)
          lotPrecision = 5;
       else
-         lotPrecision = (int)(MathLog(symbolInfo.VolumeStep())/MathLog(0.1));
+         lotPrecision = (int)(MathLog(symbolInfo.VolumeStep()) / MathLog(0.1));
       
-      // Pengelolaan lot berdasarkan money management
-      if(isMoneyManagementEnabled)
+      // Money Management (tidak mengubah logika)
+      if(g_isMoneyManagementEnabled)
       {
          if(RiskPercentage < 0.01 || RiskPercentage > 100.0)
          {
@@ -468,157 +542,90 @@ void ProcessTrading(int timeframe)
          {
             if(FixedLotSize == 0.0)
             {
-               lotStep = symbolInfo.VolumeStep();
-               requiredMargin = AccountInfoDouble(ACCOUNT_MARGIN);
-               defaultSpreadLimit = MathMax(AccountInfoDouble(ACCOUNT_BALANCE), defaultSpreadLimit);
+               g_lotStep = symbolInfo.VolumeStep();
+               g_requiredMargin = AccountInfoDouble(ACCOUNT_MARGIN);
+               g_defaultSpreadLimit = MathMax(AccountInfoDouble(ACCOUNT_BALANCE), g_defaultSpreadLimit);
                
                double maxLotCalculated = MathMin(AccountInfoDouble(ACCOUNT_FREEMARGIN) * AccountInfoInteger(ACCOUNT_LEVERAGE) / 2.0,
-                                 defaultSpreadLimit * RiskPercentage/100.0 * SymbolInfoDouble(Symbol(), SYMBOL_BID) / totalRequiredRange);
+                  g_defaultSpreadLimit * RiskPercentage / 100.0 * SymbolInfoDouble(Symbol(), SYMBOL_BID) / totalRequiredRange);
                
-               defaultLotSize = maxLotCalculated / symbolInfo.VolumeStep();
-               defaultLotSize = NormalizeDouble(defaultLotSize, lotPrecision);
+               g_defaultLotSize = maxLotCalculated / symbolInfo.VolumeStep();
+               g_defaultLotSize = NormalizeDouble(g_defaultLotSize, lotPrecision);
                
-               if(defaultLotSize * requiredMargin > AccountInfoDouble(ACCOUNT_FREEMARGIN))
-                  defaultLotSize -= lotStep;
+               if(g_defaultLotSize * g_requiredMargin > AccountInfoDouble(ACCOUNT_FREEMARGIN))
+                  g_defaultLotSize -= g_lotStep;
                
-               defaultLotSize = MathMax(minLotSize, defaultLotSize);
-               defaultLotSize = MathMax(symbolInfo.VolumeMin(), defaultLotSize);
-               defaultLotSize = MathMin(maxLotSize, defaultLotSize);
-               defaultLotSize = MathMin(symbolInfo.VolumeMax(), defaultLotSize);
+               g_defaultLotSize = MathMax(g_minLotSize, g_defaultLotSize);
+               g_defaultLotSize = MathMax(symbolInfo.VolumeMin(), g_defaultLotSize);
+               g_defaultLotSize = MathMin(g_maxLotSize, g_defaultLotSize);
+               g_defaultLotSize = MathMin(symbolInfo.VolumeMax(), g_defaultLotSize);
             }
             else
-               defaultLotSize = FixedLotSize;
+               g_defaultLotSize = FixedLotSize;
          }
       }
       
-      // Inisialisasi order counter (sederhana, karena MQL5 memerlukan pendekatan berbeda)
       activeOrderCount = 0;
       
-      // Proses order yang sudah ada bisa dilakukan dengan mengiterasi Pending Orders/Positions
-      // (kode berikut merupakan placeholder sesuai logika MQL4 asli)
+      // Proses order yang sudah ada (placeholder, karena pemrosesan order di MQL5 memerlukan pendekatan berbeda)
+      // ...
       
       // Cek harga normalisasi
-      if(priceCheckCounter >= 0 || priceCheckCounter == -2)
+      if(g_priceCheckCounter >= 0 || g_priceCheckCounter == -2)
       {
-         int bidTicks = (int)NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID)/point,0);
-         int askTicks = (int)NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK)/point,0);
+         int bidTicks = (int)NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID)/g_point, 0);
+         int askTicks = (int)NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK)/g_point, 0);
          if(bidTicks % 10 != 0 || askTicks % 10 != 0)
-            priceCheckCounter = -1;
+            g_priceCheckCounter = -1;
          else
          {
-            if(priceCheckCounter >= 0 && priceCheckCounter < 10)
-               priceCheckCounter++;
+            if(g_priceCheckCounter >= 0 && g_priceCheckCounter < 10)
+               g_priceCheckCounter++;
             else
-               priceCheckCounter = -2;
+               g_priceCheckCounter = -2;
          }
       }
       
       // Proses order baru jika kondisi terpenuhi
-      if(stopRange != 0.0 && activeOrderCount == 0 && signalDirection != 0 && 
-         NormalizeDouble(totalSpread, digits) <= NormalizeDouble(currentSpread * pipValue, digits) && 
-         priceCheckCounter == -1)
+      if(stopRange != 0.0 && activeOrderCount == 0 && signalDirection != 0 &&
+         NormalizeDouble(totalSpread, g_digits) <= NormalizeDouble(g_currentSpread * g_pipValue, g_digits) &&
+         g_priceCheckCounter == -1)
       {
          if(signalDirection < 0)
          {
-            if(useTrailingStop)
+            if(g_useTrailingStop)
             {
-               buyPrice = SymbolInfoDouble(Symbol(), SYMBOL_ASK) + StopDistance * pipValue;
-               if(!SendBuyStop(defaultLotSize, buyPrice, slippage, buyPrice - StopLossPoints * pipValue,
-                               buyPrice + TakeProfitPoints * pipValue, ExpertName, expirationTime))
+               buyPrice = SymbolInfoDouble(Symbol(), SYMBOL_ASK) + StopDistance * g_pipValue;
+               if(!SendBuyStop(g_defaultLotSize, buyPrice, g_slippage, buyPrice - StopLossPoints * g_pipValue,
+                  buyPrice + TakeProfitPoints * g_pipValue, ExpertName, expirationTime))
                {
                   shouldRepeatOrder = true;
-                  Print("GALAT BUYSTOP : " + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, digits) +
-                        " SL:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, digits) +
-                        " TP:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, digits));
+                  Print("GALAT BUYSTOP : " + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, g_digits) +
+                        " SL:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, g_digits) +
+                        " TP:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, g_digits));
                }
                else
-                  Print("BUYSTOP : " + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, digits) +
-                        " SL:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, digits) +
-                        " TP:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, digits));
+                  Print("BUYSTOP : " + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, g_digits) +
+                        " SL:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, g_digits) +
+                        " TP:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, g_digits));
             }
          }
          else if(signalDirection > 0)
          {
-            if(useTrailingStop)
+            if(g_useTrailingStop)
             {
-               sellPrice = SymbolInfoDouble(Symbol(), SYMBOL_BID) - StopDistance * pipValue;
-               if(!SendSellStop(defaultLotSize, sellPrice, slippage, sellPrice + StopLossPoints * pipValue,
-                                sellPrice - TakeProfitPoints * pipValue, ExpertName, expirationTime))
+               sellPrice = SymbolInfoDouble(Symbol(), SYMBOL_BID) - StopDistance * g_pipValue;
+               if(!SendSellStop(g_defaultLotSize, sellPrice, g_slippage, sellPrice + StopLossPoints * g_pipValue,
+                  sellPrice - TakeProfitPoints * g_pipValue, ExpertName, expirationTime))
                {
                   shouldRepeatOrder = true;
-                  Print("GALAT SELLSTOP : " + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, digits) +
-                        " SL:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, digits) +
-                        " TP:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, digits));
+                  Print("GALAT SELLSTOP : " + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, g_digits) +
+                        " SL:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, g_digits) +
+                        " TP:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, g_digits));
                }
                else
-                  Print("SELLSTOP : " + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, digits) +
-                        " SL:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, digits) +
-                        " TP:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, digits));
+                  Print("SELLSTOP : " + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, g_digits) +
+                        " SL:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_ASK) + stopRange, g_digits) +
+                        " TP:" + FormatDouble(SymbolInfoDouble(Symbol(), SYMBOL_BID) - stopRange, g_digits));
             }
          }
-      }
-      
-      // Tampilkan pesan status
-      if(priceCheckCounter >= 0)
-         Comment("Robot sedang dimuat...");
-      else
-      {
-         if(priceCheckCounter == -2)
-         {
-            string errorMsg = StringFormat("GALAT -- Instrument %s prices should have %d fraction digits on broker account", Symbol(), digits);
-            Comment(errorMsg);
-         }
-         else
-         {
-            debugMessage = TimeToString(TimeCurrent(), TIME_MINUTES) + " tick:" + FormatInteger(tickCounter);
-            if(isDebugMode || isDisplayTrades)
-            {
-               debugMessage = debugMessage + "\n" +
-                              FormatDouble(defaultRange, digits) + " " +
-                              FormatDouble(stopRange, digits) + " digits:" +
-                              FormatInteger(digits) + " " +
-                              FormatInteger(priceCheckCounter) + " stopLevel:" +
-                              FormatDouble(stopLevel, digits) + "\n" +
-                              FormatInteger(signalDirection) + " " +
-                              FormatDouble(upperBand, digits) + " " +
-                              FormatDouble(lowerBand, digits) + " " +
-                              FormatDouble(spreadMultiplier, digits) + " exp:" +
-                              TimeToString(expirationTime, TIME_MINUTES) +
-                              " numOrders:" + FormatInteger(activeOrderCount) +
-                              " shouldRepeat:" + FormatInteger((int)shouldRepeatOrder) + "\n" +
-                              "trailingLimit:" + FormatDouble(trailingLimit, digits) +
-                              " trailingDist:" + FormatDouble(defaultTrailingDistance, digits) +
-                              " trailingGap:" + FormatDouble(trailingGap, digits) +
-                              " useStopOrders:" + FormatInteger((int)useTrailingStop);
-            }
-            
-            if(NormalizeDouble(totalSpread, digits) > NormalizeDouble(currentSpread * pipValue, digits))
-            {
-               debugMessage = debugMessage + "\nEA Disabled :: Spread is too high for scalping ( " +
-                              FormatDouble(totalSpread, digits) + " > " +
-                              FormatDouble(currentSpread * pipValue, digits) + " )";
-            }
-            if(activeOrderCount != 0 || signalDirection != 0 || isDisplayTrades)
-               Print(debugMessage);
-         }
-      }
-      
-      // Ulangi order yang gagal jika diperlukan (recursive call sederhana)
-      if(shouldRepeatOrder)
-      {
-         errorCheck = 1; // placeholder untuk pengecekan
-         if(errorCheck)
-            ProcessTrading(timeframe);
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Expert tick function                                             |
-//+------------------------------------------------------------------+
-void OnTick()
-{
-   // Gunakan timeframe chart saat ini
-   int timeframe = Period();
-   ProcessTrading(timeframe);
-}
