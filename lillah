@@ -1,0 +1,807 @@
+//+------------------------------------------------------------------+
+//|                                                    SakhaAwal.mq4   |
+//|                                Copyright 2025, bunganar            |
+//|                     https://github.com/bunganar/KING-CRAZY        |
+//+------------------------------------------------------------------+
+#property copyright "bunganar"
+#property link      "https://github.com/bunganar/KING-CRAZY"
+#property version   "1.00"
+#property strict
+
+// Global variables
+string ROBOT_NAME = "Robot";
+string CONFIG_NAME = "Konfigurasi";
+extern bool UseBreakConfirmation = FALSE;
+extern string IndicatorDescription = "1=MA,2=BB,3=Envelopes";
+extern int SelectedIndicator = 3;
+bool isDebugMode = FALSE;
+bool isDisplayTrades = FALSE;
+bool isTrailingStopEnabled = TRUE;
+bool isStopOrderEnabled = FALSE;
+extern int MagicNumber = 1245986;
+extern string ExpertName = "fxindo.com";
+extern double CandleLimit = 10.0;
+double defaultCandleRange = 18.0;
+extern double StopDistance = 3.0;
+extern double TakeProfitPoints = 2.0;
+extern double StopLossPoints = 6.0;
+extern bool UseStrictStopLoss = TRUE;
+extern int IndicatorPeriod = 0;
+extern int IndicatorShift = 0;
+extern int CandleShift = 0;
+double requiredMargin;
+double lotStep;
+string MMSettings = "MM";
+extern double FixedLotSize = 0.0;
+double defaultLotSize = 0.1;
+bool isMoneyManagementEnabled = TRUE;
+double minLotSize = 0.01;
+double maxLotSize = 100.0;
+extern double RiskPercentage = 10.0;
+string SpreadSettings = "Spread Maksimal";
+extern bool DeleteOnSpreadWiden = FALSE;
+extern double MaxSpread = 1.0;
+double defaultSpreadLimit = 10.0;
+string ScalpingSettings = "Faktor Scalping";
+double currentSpread;
+double spreadMultiplier = 0.4;
+double defaultPipValue = 0.3333333333;
+double pipValue = 0.0;
+string TrailingSettings = "SL / TP / Trailing";
+extern double ClosePercentage = 0.0;
+extern double InitialCapital = 0.0;
+double trailingGap = 0.0;
+double trailingLimit = 0.0;
+extern double TrailingStopPoints = 2.0;
+extern bool IsTrailingStopEnabled = TRUE;
+string DayFilterSettings = "Filter Hari";
+extern bool IsFridayOff = FALSE;
+extern bool IsMondayOff = FALSE;
+bool isMondayExcluded;
+int excludedDay;
+int currentPosition;
+bool useStopOrders = TRUE;
+string dummyString;
+int digits = 0;
+double point = 0.0;
+int slippage = 0;
+double unusedArray1[30];
+double unusedArray2[30];
+int unusedArray3[30];
+double unusedValue1 = 1.0;
+bool isTickProcessingEnabled = TRUE;
+double defaultTrailingDistance = 2.0;
+double defaultGapValue = 0.0;
+int priceCheckCounter = 0;
+datetime lastTickTime = 0;
+int tickCounter = 0;
+double spreadHistory[30];
+int spreadHistoryCount = 0;
+bool isSpreadCheckEnabled = TRUE;
+double minTrailingStep = 0.5;
+double trailingStopDistance = 1.0;
+double maxTrailingDistance = 4.0;
+bool useTrailingStop = TRUE;
+string unusedString1;
+string debugMessage;
+int buyOrders[] = {0};
+int sellOrders[] = {0};
+double level1 = 3.0;
+double level2 = 3.0;
+double level3 = 6.0;
+double level4 = 9.0;
+double level5 = 12.0;
+double level6 = 15.0;
+double level7 = 18.0;
+double level8 = 21.0;
+double level9 = 25.0;
+double upperBand;
+double lowerBand;
+double indicatorValue1;
+double indicatorValue2;
+
+//+------------------------------------------------------------------+
+//| Helper functions for type safety                                   |
+//+------------------------------------------------------------------+
+bool SelectOrder(int index, int select, int pool) {
+   return OrderSelect(index, select, pool);
+}
+
+bool DeleteOrder(int ticket) {
+   return OrderDelete(ticket);
+}
+
+string FormatDouble(double value, int digits) {
+   return DoubleToStr(value, digits);
+}
+
+string FormatInteger(int value) {
+   return StringConcatenate("", value);
+}
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                     |
+//+------------------------------------------------------------------+
+int init() {
+   currentSpread = MaxSpread;
+   
+   if (IndicatorPeriod == 0) IndicatorPeriod = 3;
+   
+   // Set default stop distance based on timeframe
+   if (StopDistance <= 0.0) {
+      if (Period() == PERIOD_M1) StopDistance = level1;
+      else if (Period() == PERIOD_M5) StopDistance = level2;
+      else if (Period() == PERIOD_M15) StopDistance = level3;
+      else if (Period() == PERIOD_M30) StopDistance = level4;
+      else if (Period() == PERIOD_H1) StopDistance = level5;
+      else if (Period() == PERIOD_H4) StopDistance = level6;
+      else if (Period() == PERIOD_D1) StopDistance = level7;
+      else if (Period() == PERIOD_W1) StopDistance = level8;
+      else if (Period() == PERIOD_MN1) StopDistance = level9;
+   }
+   
+   // Initialize day filter settings
+   if (IsFridayOff) excludedDay = 5;
+   if (IsMondayOff) isMondayExcluded = TRUE;
+   
+   // Initialize spread history array
+   ArrayInitialize(spreadHistory, 0);
+   
+   // Initialize market settings
+   digits = Digits;
+   point = Point;
+   pipValue = Point;
+   if (Digits == 3 || Digits == 5) pipValue = 10.0 * Point;
+   
+   slippage = 0;
+   buyOrders[0] = 1;
+   
+   start();
+   return (0);
+}
+
+//+------------------------------------------------------------------+
+//| Expert start function                                             |
+//+------------------------------------------------------------------+
+int start() {
+   HideTestIndicators(TRUE);
+   
+   // Check trading day restrictions
+   if (DayOfWeek() != isMondayExcluded && DayOfWeek() != excludedDay) {
+      // Reset initial capital at start of day
+      if (Hour() == 0 && Minute() == 0) InitialCapital = AccountBalance();
+      
+      // Verify market settings
+      if (digits == 0) return (init());
+      
+      // Update spread information
+      UpdateSpreadInfo();
+      
+      if (buyOrders[0] != TRUE) return (0);
+      
+      // Process main trading logic
+      ProcessTrading(Period());
+      return (0);
+   }
+   return (0);
+}
+
+//+------------------------------------------------------------------+
+//| Update spread information                                         |
+//+------------------------------------------------------------------+
+void UpdateSpreadInfo() {
+   double currentSpreadPoints = MarketInfo(Symbol(), MODE_SPREAD);
+   currentSpreadPoints /= 10.0;
+   DisplaySpreadInfo(currentSpreadPoints);
+}
+
+//+------------------------------------------------------------------+
+//| Display spread information                                        |
+//+------------------------------------------------------------------+
+void DisplaySpreadInfo(double spreadPoints) {
+   string infoMessage = StringConcatenate(
+      "Mbelgedes Robot FX \n", debugMessage,
+      "\n------------------------------------------------\n",
+      "INFORMASI AKUN:\n",
+      "Spread: ", FormatDouble(spreadPoints, 1), " pip(s)\n",
+      "Jumlah Lot: ", FormatDouble(defaultLotSize, 2), " lot(s)\n",
+      "Balance Akun: ", FormatDouble(AccountBalance(), 2), "\n",
+      "Minimum Stop: ", FormatDouble(14, 2), " pip(s)\n",
+      "------------------------------------------------\n"
+   );
+   Comment(infoMessage);
+}
+
+//+------------------------------------------------------------------+
+//| Format logging message                                            |
+//+------------------------------------------------------------------+
+string FormatTickNumber(int tickNum) {
+   if (tickNum < 10) return StringConcatenate("00", FormatInteger(tickNum));
+   if (tickNum < 100) return StringConcatenate("0", FormatInteger(tickNum));
+   return FormatInteger(tickNum);
+}
+
+//+------------------------------------------------------------------+
+//| Calculate logarithm with custom base                              |
+//+------------------------------------------------------------------+
+double CalculateLogBase(double base, double value) {
+   return MathLog(value) / MathLog(base);
+}
+
+//+------------------------------------------------------------------+
+//| Print message with line breaks                                    |
+//+------------------------------------------------------------------+
+void PrintFormattedMessage(string message) {
+   int startPos;
+   int endPos = -1;
+   
+   while (endPos < StringLen(message)) {
+      startPos = endPos + 1;
+      endPos = StringFind(message, "\n", startPos);
+      
+      if (endPos == -1) {
+         Print(StringSubstr(message, startPos));
+         return;
+      }
+      Print(StringSubstr(message, startPos, endPos - startPos));
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Normalize price value                                             |
+//+------------------------------------------------------------------+
+double NormalizePrice(double price) {
+   return NormalizeDouble(price, digits);
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                  |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason) {
+   Comment("");
+}
+
+//+------------------------------------------------------------------+
+//| Main trading function                                             |
+//+------------------------------------------------------------------+
+void ProcessTrading(int timeframe) {
+   int orderTicket;
+   int errorCheck;
+   double buyPrice;
+   double sellPrice;
+   bool orderSuccess;
+   double pipsValue;
+   bool moneyManagementResult;
+   double stopLevel;
+   double spreadValue;
+   double orderLots;
+   double highPrice;
+   double lowPrice;
+   datetime expirationTime;
+   int lotPrecision;
+   double calculatedSpread;
+   double stopLossLevel;
+   double takeProfitLevel;
+   double trailingAmount;
+   int orderCount;
+   int otherSymbolCount;
+   bool priceChecked;
+   double deviationRange;
+   string positionInfo;
+   bool shouldRepeatOrder;
+
+   // Update tick time tracking
+   if (lastTickTime < Time[0]) {
+      lastTickTime = Time[0];
+      tickCounter = 0;
+   } else tickCounter++;
+
+   // Get price data
+   highPrice = iHigh(Symbol(), timeframe, CandleShift);
+   lowPrice = iLow(Symbol(), timeframe, CandleShift);
+
+   // Calculate indicator values based on selected indicator
+   if (SelectedIndicator == 1) {
+      lowerBand = iMA(NULL, timeframe, IndicatorPeriod, 0, MODE_LWMA, PRICE_LOW, IndicatorShift);
+      upperBand = iMA(NULL, timeframe, IndicatorPeriod, 0, MODE_LWMA, PRICE_HIGH, IndicatorShift);
+   }
+   else if (SelectedIndicator == 2) {
+      upperBand = iBands(Symbol(), timeframe, IndicatorPeriod, 1.5, 0, PRICE_OPEN, MODE_UPPER, IndicatorShift);
+      lowerBand = iBands(Symbol(), timeframe, IndicatorPeriod, 1.5, 0, PRICE_OPEN, MODE_LOWER, IndicatorShift);
+   }
+   else if (SelectedIndicator == 3) {
+      upperBand = iEnvelopes(Symbol(), timeframe, IndicatorPeriod, MODE_LWMA, 0, PRICE_OPEN, 0.07, MODE_UPPER, IndicatorShift);
+      lowerBand = iEnvelopes(Symbol(), timeframe, IndicatorPeriod, MODE_LWMA, 0, PRICE_OPEN, 0.07, MODE_LOWER, IndicatorShift);
+   }
+
+   int signalDirection = 0;
+   deviationRange = upperBand - lowerBand;
+   bool isPriceAboveMiddle = Bid >= lowerBand + deviationRange / 2.0;
+
+   if (!isTickProcessingEnabled) {
+      for (currentPosition = OrdersTotal() - 1; currentPosition >= 0; currentPosition--) {
+         if (!SelectOrder(currentPosition, SELECT_BY_POS, MODE_TRADES)) continue;
+         
+         if (OrderSymbol() == Symbol() && OrderCloseTime() != 0 && 
+             OrderClosePrice() != OrderOpenPrice() && OrderProfit() != 0.0 && 
+             OrderComment() != "Liquid Parsial" && 
+             StringFind(OrderComment(), "[sl]from #") == -1 && 
+             StringFind(OrderComment(), "[tp]from #") == -1) {
+             
+            isTickProcessingEnabled = TRUE;
+            pipsValue = MathAbs(OrderProfit() / (OrderClosePrice() - OrderOpenPrice()));
+            defaultTrailingDistance = pipsValue / OrderLots() / MarketInfo(Symbol(), MODE_LOTSIZE);
+            defaultGapValue = (-OrderCommission()) / pipsValue;
+            Print("Komisi : " + FormatDouble(defaultGapValue, digits));
+            break;
+         }
+      }
+   }
+
+   // Check history for commission calculation if not found in open orders
+   if (!isTickProcessingEnabled) {
+      for (currentPosition = OrdersHistoryTotal() - 1; currentPosition >= 0; currentPosition--) {
+         if (!SelectOrder(currentPosition, SELECT_BY_POS, MODE_HISTORY)) continue;
+         
+         if (OrderSymbol() == Symbol() && OrderCloseTime() != 0 && 
+             OrderClosePrice() != OrderOpenPrice() && OrderProfit() != 0.0 && 
+             OrderComment() != "Liquid Parsial" && 
+             StringFind(OrderComment(), "[SL] dari #") == -1 && 
+             StringFind(OrderComment(), "[TP] dari #") == -1) {
+             
+            isTickProcessingEnabled = TRUE;
+            pipsValue = MathAbs(OrderProfit() / (OrderClosePrice() - OrderOpenPrice()));
+            defaultTrailingDistance = pipsValue / OrderLots() / MarketInfo(Symbol(), MODE_LOTSIZE);
+            defaultGapValue = (-OrderCommission()) / pipsValue;
+            Print("Komisi : " + FormatDouble(defaultGapValue, digits));
+            break;
+         }
+      }
+   }
+
+   // Calculate trading parameters
+   stopLevel = MarketInfo(Symbol(), MODE_STOPLEVEL) * point;
+   spreadValue = Ask - Bid;
+   orderLots = minTrailingStep;
+
+   // Adjust trailing parameters based on stop level
+   if (orderLots < stopLevel - pipValue / 2.0) {
+      useTrailingStop = IsTrailingStopEnabled;
+      trailingAmount = maxTrailingDistance * pipValue;
+      orderLots = trailingStopDistance * pipValue;
+      pipsValue = minTrailingStep * pipValue;
+   } else {
+      if (!isTrailingStopEnabled) {
+         useTrailingStop = useStopOrders;
+         trailingAmount = maxTrailingDistance * pipValue;
+         orderLots = trailingStopDistance * pipValue;
+         pipsValue = minTrailingStep * pipValue;
+      } else {
+         useTrailingStop = useStopOrders;
+         trailingAmount = TrailingStopPoints * pipValue;
+         orderLots = trailingLimit * pipValue;
+         pipsValue = trailingGap * pipValue;
+      }
+   }
+   
+   // Adjust minimum trailing values
+   trailingAmount = MathMax(trailingAmount, stopLevel);
+   if (useTrailingStop) orderLots = MathMax(orderLots, stopLevel);
+
+   // Update spread history
+   ArrayCopy(spreadHistory, spreadHistory, 0, 1, 29);
+   spreadHistory[29] = spreadValue;
+   if (spreadHistoryCount < 30) spreadHistoryCount++;
+
+   // Calculate average spread
+   double averageSpread = 0;
+   currentPosition = 29;
+   for (int i = 0; i < spreadHistoryCount; i++) {
+      averageSpread += spreadHistory[currentPosition];
+      currentPosition--;
+   }
+   double spreadAverage = averageSpread / spreadHistoryCount;
+   
+   // Adjust commission if needed
+   if ((!isTickProcessingEnabled) && spreadAverage < 1.5 * pipValue) 
+      defaultGapValue = 1.5 * pipValue - spreadAverage;
+
+   // Calculate price levels with commission
+   double askWithCommission = NormalizePrice(Ask + defaultGapValue);
+   double bidWithCommission = NormalizePrice(Bid - defaultGapValue);
+   double totalSpread = spreadAverage + defaultGapValue;
+   double candleRange = highPrice - lowPrice;
+   
+   // Generate order identifier
+   string orderIdentifier = StringConcatenate(
+      FormatInteger((int)isTrailingStopEnabled), "-",
+      FormatInteger((int)isStopOrderEnabled), "-0"
+   );
+
+   // Calculate trading ranges
+   double defaultRange = defaultCandleRange * pipValue;
+   double candleLimit = CandleLimit * pipValue;
+
+   // Determine trading signal based on confirmation settings
+   if (UseBreakConfirmation == TRUE) {
+      if (candleRange > candleLimit) {
+         if (Bid < lowerBand) signalDirection = -1;
+         else if (Bid > upperBand) signalDirection = 1;
+      }
+   } else {
+      if (candleRange > candleLimit) {
+         if (Bid < upperBand) signalDirection = -1;
+         else if (Bid > lowerBand) signalDirection = 1;
+      }
+   }
+
+   // Calculate stop loss range
+   double stopRange;
+   if (pipValue == 0.0) stopRange = defaultPipValue * defaultRange;
+   else stopRange = pipValue * pipValue;
+
+   stopRange = MathMax(stopLevel, stopRange);
+   if (Bid == 0.0 || MarketInfo(Symbol(), MODE_LOTSIZE) == 0.0) 
+      stopRange = 0;
+
+   // Calculate total required range
+   double totalRequiredRange = stopRange + spreadAverage + defaultGapValue;
+
+   // Set order expiration
+   if (isSpreadCheckEnabled) 
+      expirationTime = TimeCurrent() + 60.0 * MathMax(10 * timeframe, 60);
+   else 
+      expirationTime = 0;
+
+   // Calculate lot precision
+   if (MarketInfo(Symbol(), MODE_LOTSTEP) == 0.0) 
+      lotPrecision = 5;
+   else 
+      lotPrecision = (int)CalculateLogBase(0.1, MarketInfo(Symbol(), MODE_LOTSTEP));
+
+   // Calculate lot size based on money management
+   if (isMoneyManagementEnabled) {
+      if (RiskPercentage < 0.01 || RiskPercentage > 100.0) {
+         Comment("GALAT -- Cek Nilai Risk.");
+         return;
+      }
+      if (AccountBalance() <= 0.0) {
+         Comment("GALAT -- Balance Akun adalah " + FormatDouble(MathRound(AccountBalance()), 0));
+         return;
+      }
+      
+      if (stopRange != 0.0) {
+         if (FixedLotSize == 0.0) {
+            lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
+            requiredMargin = MarketInfo(Symbol(), MODE_MARGINREQUIRED);
+            defaultSpreadLimit = MathMax(AccountBalance(), defaultSpreadLimit);
+            
+            double maxLotCalculated = MathMin(
+               AccountFreeMargin() * AccountLeverage() / 2.0,
+               defaultSpreadLimit * RiskPercentage / 100.0 * Bid / totalRequiredRange
+            );
+            
+            defaultLotSize = maxLotCalculated / MarketInfo(Symbol(), MODE_LOTSIZE);
+            defaultLotSize = NormalizeDouble(defaultLotSize, lotPrecision);
+            
+            if (defaultLotSize * requiredMargin > AccountFreeMargin()) 
+               defaultLotSize -= lotStep;
+            
+            defaultLotSize = MathMax(minLotSize, defaultLotSize);
+            defaultLotSize = MathMax(MarketInfo(Symbol(), MODE_MINLOT), defaultLotSize);
+            defaultLotSize = MathMin(maxLotSize, defaultLotSize);
+            defaultLotSize = MathMin(MarketInfo(Symbol(), MODE_MAXLOT), defaultLotSize);
+         } else 
+            defaultLotSize = FixedLotSize;
+      }
+   }
+
+   // Initialize order counters
+   int activeOrderCount = 0;
+   int otherPairOrderCount = 0;
+
+   // Process existing orders
+   for (currentPosition = 0; currentPosition < OrdersTotal(); currentPosition++) {
+      if (!SelectOrder(currentPosition, SELECT_BY_POS, MODE_TRADES)) continue;
+      
+      if (OrderMagicNumber() == MagicNumber && OrderCloseTime() == 0) {
+         // Skip orders for other symbols
+         if (OrderSymbol() != Symbol()) {
+            otherPairOrderCount++;
+            continue;
+         }
+
+         // Process different order types
+         switch (OrderType()) {
+            case OP_BUY:
+               // Handle close by percentage if enabled
+               while (ClosePercentage > 0.0) {
+                  if (OrderProfit() >= InitialCapital * (ClosePercentage / 100.0)) 
+                     orderSuccess = OrderClose(OrderTicket(), OrderLots(), Bid, 0, CLR_NONE);
+                  if (orderSuccess) break;
+                  errorCheck = SelectOrder(0, 0, 0);
+                  if (!errorCheck) break;
+               }
+
+               // Handle trailing stop
+               while (IsTrailingStopEnabled) {
+                  stopLossLevel = OrderStopLoss();
+                  takeProfitLevel = OrderTakeProfit();
+                  
+                  if (!((takeProfitLevel < NormalizePrice(askWithCommission + trailingAmount) && 
+                        askWithCommission + trailingAmount - takeProfitLevel > pipsValue))) 
+                     break;
+
+                  stopLossLevel = NormalizePrice(Bid - trailingAmount);
+                  takeProfitLevel = NormalizePrice(askWithCommission + trailingAmount);
+
+                  if (UseStrictStopLoss == TRUE) {
+                     if (stopLossLevel > OrderStopLoss())
+                        orderSuccess = OrderModify(OrderTicket(), 0, stopLossLevel, takeProfitLevel, 
+                                                 expirationTime, CLR_NONE);
+                  } else {
+                     if (OrderOpenPrice() < stopLossLevel)
+                        orderSuccess = OrderModify(OrderTicket(), 0, stopLossLevel, takeProfitLevel, 
+                                                 expirationTime, CLR_NONE);
+                  }
+                  if (orderSuccess) break;
+                  errorCheck = SelectOrder(0, 0, 0);
+                  if (!errorCheck) break;
+               }
+               activeOrderCount++;
+               break;
+
+            case OP_SELL:
+               // Handle close by percentage if enabled
+               while (ClosePercentage > 0.0) {
+                  if (AccountProfit() >= InitialCapital * (ClosePercentage / 100.0))
+                     orderSuccess = OrderClose(OrderTicket(), OrderLots(), Ask, 0, CLR_NONE);
+                  if (orderSuccess) break;
+                  errorCheck = SelectOrder(0, 0, 0);
+                  if (!errorCheck) break;
+               }
+
+               // Handle trailing stop
+               while (IsTrailingStopEnabled) {
+                  stopLossLevel = OrderStopLoss();
+                  takeProfitLevel = OrderTakeProfit();
+                  
+                  if (!((takeProfitLevel > NormalizePrice(bidWithCommission - trailingAmount) && 
+                        takeProfitLevel - bidWithCommission + trailingAmount > pipsValue))) 
+                     break;
+
+                  stopLossLevel = NormalizePrice(Ask + trailingAmount);
+                  takeProfitLevel = NormalizePrice(bidWithCommission - trailingAmount);
+
+                  if (UseStrictStopLoss == TRUE) {
+                     if (stopLossLevel < OrderStopLoss())
+                        orderSuccess = OrderModify(OrderTicket(), 0, stopLossLevel, takeProfitLevel, 
+                                                 expirationTime, CLR_NONE);
+                  } else {
+                     if (OrderOpenPrice() > stopLossLevel)
+                        orderSuccess = OrderModify(OrderTicket(), 0, stopLossLevel, takeProfitLevel, 
+                                                 expirationTime, CLR_NONE);
+                  }
+                  if (orderSuccess) break;
+                  errorCheck = SelectOrder(0, 0, 0);
+                  if (!errorCheck) break;
+               }
+               activeOrderCount++;
+               break;
+
+            case OP_BUYSTOP:
+               if (!isPriceAboveMiddle) {
+                  trailingAmount = OrderTakeProfit() - OrderOpenPrice() - defaultGapValue;
+                  while (true) {
+                     if (!((NormalizePrice(Ask + orderLots) < OrderOpenPrice() && 
+                           OrderOpenPrice() - Ask - orderLots > pipsValue))) 
+                        break;
+
+                     orderSuccess = OrderModify(OrderTicket(), 
+                                              NormalizePrice(Ask + orderLots),
+                                              NormalizePrice(Bid + orderLots - trailingAmount),
+                                              NormalizePrice(askWithCommission + orderLots + trailingAmount),
+                                              0, CLR_NONE);
+                     if (orderSuccess) break;
+                     errorCheck = SelectOrder(0, 0, 0);
+                     if (!errorCheck) break;
+                  }
+                  activeOrderCount++;
+               } else {
+                  if (!DeleteOrder(OrderTicket())) 
+                     Print("Error deleting order");
+               }
+
+               // Delete order if spread is too wide
+               if (DeleteOnSpreadWiden == TRUE && 
+                   NormalizePrice(totalSpread) > NormalizePrice(currentSpread * pipValue)) {
+                  if (!DeleteOrder(OrderTicket())) 
+                     Print("Error deleting order");
+               }
+               break;
+               case OP_SELLSTOP:
+               if (isPriceAboveMiddle) {
+                  trailingAmount = OrderOpenPrice() - OrderTakeProfit() - defaultGapValue;
+                  while (true) {
+                     if (!((NormalizePrice(Bid - orderLots) > OrderOpenPrice() && 
+                           Bid - orderLots - OrderOpenPrice() > pipsValue))) 
+                        break;
+
+                     orderSuccess = OrderModify(OrderTicket(),
+                                              NormalizePrice(Bid - orderLots),
+                                              NormalizePrice(Ask - orderLots + trailingAmount),
+                                              NormalizePrice(bidWithCommission - orderLots - trailingAmount),
+                                              0, CLR_NONE);
+                     if (orderSuccess) break;
+                     errorCheck = SelectOrder(0, 0, 0);
+                     if (!errorCheck) break;
+                  }
+                  activeOrderCount++;
+               } else {
+                  if (!DeleteOrder(OrderTicket())) 
+                     Print("Error deleting order");
+               }
+
+               // Delete order if spread is too wide
+               if (DeleteOnSpreadWiden == TRUE && 
+                   NormalizePrice(totalSpread) > NormalizePrice(currentSpread * pipValue)) {
+                  if (!DeleteOrder(OrderTicket())) 
+                     Print("Error deleting order");
+               }
+               break;
+         }
+      }
+   }
+
+   // Check for price normalization
+   bool priceNormalized = FALSE;
+   if (priceCheckCounter >= 0 || priceCheckCounter == -2) {
+      int bidTicks = (int)NormalizeDouble(Bid / point, 0);
+      int askTicks = (int)NormalizeDouble(Ask / point, 0);
+      
+      if (bidTicks % 10 != 0 || askTicks % 10 != 0) 
+         priceCheckCounter = -1;
+      else {
+         if (priceCheckCounter >= 0 && priceCheckCounter < 10) 
+            priceCheckCounter++;
+         else 
+            priceCheckCounter = -2;
+      }
+   }
+
+   // Process new orders
+   if (stopRange != 0.0 && activeOrderCount == 0 && signalDirection != 0 && 
+       NormalizePrice(totalSpread) <= NormalizePrice(currentSpread * pipValue) && 
+       priceCheckCounter == -1) {
+       
+      if (signalDirection < 0) {
+         if (useTrailingStop) {
+            buyPrice = Ask + StopDistance * pipValue;
+            orderTicket = OrderSend(Symbol(), OP_BUYSTOP, defaultLotSize, buyPrice, slippage,
+                                  buyPrice - StopLossPoints * pipValue,
+                                  buyPrice + TakeProfitPoints * pipValue,
+                                  ExpertName, MagicNumber, expirationTime, CLR_NONE);
+                                  
+            if (orderTicket < 0) {
+               shouldRepeatOrder = TRUE;
+               string errorMessage = StringConcatenate(
+                  "GALAT BUYSTOP : ",
+                  FormatDouble(Ask + orderLots, digits),
+                  " SL:", 
+                  FormatDouble(Bid + orderLots - stopRange, digits),
+                  " TP:",
+                  FormatDouble(askWithCommission + orderLots + stopRange, digits)
+               );
+               Print(errorMessage);
+            } else {
+               string successMessage = StringConcatenate(
+                  "BUYSTOP : ",
+                  FormatDouble(Ask + orderLots, digits),
+                  " SL:", 
+                  FormatDouble(Bid + orderLots - stopRange, digits),
+                  " TP:",
+                  FormatDouble(askWithCommission + orderLots + stopRange, digits)
+               );
+               Print(successMessage);
+            }
+         }
+      } else if (signalDirection > 0) {
+         if (useTrailingStop) {
+            sellPrice = Bid - StopDistance * pipValue;
+            orderTicket = OrderSend(Symbol(), OP_SELLSTOP, defaultLotSize, sellPrice, slippage,
+                                  sellPrice + StopLossPoints * pipValue,
+                                  sellPrice - TakeProfitPoints * pipValue,
+                                  ExpertName, MagicNumber, expirationTime, CLR_NONE);
+                                  
+            if (orderTicket < 0) {
+               shouldRepeatOrder = TRUE;
+               string errorMessage = StringConcatenate(
+                  "GALAT SELLSTOP : ",
+                  FormatDouble(Bid - orderLots, digits),
+                  " SL:", 
+                  FormatDouble(Ask - orderLots + stopRange, digits),
+                  " TP:",
+                  FormatDouble(bidWithCommission - orderLots - stopRange, digits)
+               );
+               Print(errorMessage);
+            } else {
+               string successMessage = StringConcatenate(
+                  "SELLSTOP : ",
+                  FormatDouble(Bid - orderLots, digits),
+                  " SL:", 
+                  FormatDouble(Ask - orderLots + stopRange, digits),
+                  " TP:",
+                  FormatDouble(bidWithCommission - orderLots - stopRange, digits)
+               );
+               Print(successMessage);
+            }
+         }
+      }
+   }
+
+   // Display status messages
+   if (priceCheckCounter >= 0) {
+      Comment("Robot sedang dimuat...");
+   } else {
+      if (priceCheckCounter == -2) {
+         string errorMsg = StringConcatenate(
+            "GALAT -- Instrument ", Symbol(), 
+            " prices should have ", 
+            FormatInteger(digits), 
+            " fraction digits on broker account"
+         );
+         Comment(errorMsg);
+      } else {
+         debugMessage = StringConcatenate(
+            TimeToStr(TimeCurrent()), 
+            " tick:", 
+            FormatTickNumber(tickCounter)
+         );
+
+         // Add debug information if enabled
+         if (isDebugMode || isDisplayTrades) {
+            debugMessage = StringConcatenate(
+               debugMessage, "\n",
+               FormatDouble(defaultRange, digits), " ",
+               FormatDouble(stopRange, digits), " digits:",
+               FormatInteger(digits), " ",
+               FormatInteger(priceCheckCounter), " stopLevel:",
+               FormatDouble(stopLevel, digits), "\n",
+               FormatInteger(signalDirection), " ",
+               FormatDouble(upperBand, digits), " ",
+               FormatDouble(lowerBand, digits), " ",
+               FormatDouble(spreadMultiplier, digits), " exp:",
+               TimeToStr(expirationTime, TIME_MINUTES),
+               " numOrders:", FormatInteger(activeOrderCount),
+               " shouldRepeat:", FormatInteger((int)shouldRepeatOrder), "\n",
+               "trailingLimit:", FormatDouble(orderLots, digits),
+               " trailingDist:", FormatDouble(trailingAmount, digits),
+               " trailingGap:", FormatDouble(pipsValue, digits),
+               " useStopOrders:", FormatInteger((int)useTrailingStop)
+            );
+         }
+
+         // Display spread warning if needed
+         if (NormalizePrice(totalSpread) > NormalizePrice(currentSpread * pipValue)) {
+            debugMessage = StringConcatenate(
+               debugMessage, 
+               "\nEA Disabled :: Spread is too high for scalping ( ",
+               FormatDouble(totalSpread, digits), 
+               " > ",
+               FormatDouble(currentSpread * pipValue, digits), 
+               " )"
+            );
+         }
+
+         // Update display if needed
+         if (activeOrderCount != 0 || signalDirection != 0 || isDisplayTrades) 
+            PrintFormattedMessage(debugMessage);
+      }
+   }
+
+   // Retry failed orders if needed
+   if (shouldRepeatOrder) {
+      errorCheck = SelectOrder(0, 0, 0);
+      if (errorCheck) ProcessTrading(timeframe);
+   }
+}
