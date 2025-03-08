@@ -1,0 +1,691 @@
+//+------------------------------------------------------------------+
+//|                                                    SakhaAwal.mq5   |
+//+------------------------------------------------------------------+
+#property copyright "Sakha99"
+#property link      "https://github.com/Sakha99/SakhaBismillah"
+#property version   "1.00"
+#property strict
+
+// Include required files
+#include <Trade/Trade.mqh>
+#include <Trade/SymbolInfo.mqh>
+#include <Trade/OrderInfo.mqh>
+#include <Trade/PositionInfo.mqh>
+
+// Input Parameters
+input group "=== Risk Management Settings ==="
+input double   InpRiskPercentage     = 2.0;          // Risk per trade (%)
+input double   InpFixedLotSize       = 0.0;          // Fixed lot size (0 = auto)
+input double   InpMaxSpread          = 3.0;          // Maximum allowed spread (pips)
+input bool     InpDeleteOnSpreadWiden = true;        // Delete orders if spread widens
+
+input group "=== Trading Time Settings ==="
+input bool     InpIsFridayOff        = true;         // Turn off trading on Friday
+input bool     InpIsMondayOff        = false;        // Turn off trading on Monday
+
+input group "=== Order Settings ==="
+input int      InpMagicNumber        = 123456;       // Magic Number
+input double   InpStopDistance       = 20.0;         // Stop Distance (pips)
+input double   InpStopLossPoints     = 30.0;         // Stop Loss (pips)
+input double   InpTakeProfitPoints   = 45.0;         // Take Profit (pips)
+input double   InpClosePercentage    = 50.0;         // Close at profit percentage
+
+input group "=== Indicator Settings ==="
+input int      InpSelectedIndicator  = 1;            // Indicator (1=MA, 2=BB, 3=ENV)
+input int      InpIndicatorPeriod    = 20;           // Indicator Period
+input int      InpIndicatorShift     = 0;            // Indicator Shift
+input int      InpCandleLimit        = 10;           // Candle Range Limit
+input bool     InpUseBreakConfirmation = true;       // Use Break Confirmation
+
+input group "=== Trailing Stop Settings ==="
+input bool     InpIsTrailingStopEnabled = true;      // Enable Trailing Stop
+input bool     InpUseStrictStopLoss    = false;      // Use Strict Stop Loss
+input double   InpTrailingStopPoints   = 15.0;       // Trailing Stop (pips)
+
+input group "=== Expert Settings ==="
+input double   InpInitialCapital     = 1000.0;       // Initial Capital
+
+//+------------------------------------------------------------------+
+//| Expert Class Definition                                            |
+//+------------------------------------------------------------------+
+class CSakhaAwal
+{
+private:
+    CTrade          m_trade;            // Trading object
+    CSymbolInfo     m_symbol;           // Symbol information object
+    COrderInfo      m_order;            // Order information object
+    CPositionInfo   m_position;         // Position information object
+    
+    // Constants
+    const string    ROBOT_NAME;         // Robot name
+    const string    CONFIG_NAME;        // Configuration name
+    
+    // Trading parameters
+    bool     m_isDebugMode;
+    bool     m_isDisplayTrades;
+    bool     m_isTrailingStopEnabled;
+    bool     m_isStopOrderEnabled;
+    bool     m_isMoneyManagementEnabled;
+    bool     m_isTickProcessingEnabled;
+    bool     m_isSpreadCheckEnabled;
+    bool     m_useTrailingStop;
+    
+    // Price and spread variables
+    double   m_defaultCandleRange;
+    double   m_defaultLotSize;
+    double   m_minLotSize;
+    double   m_maxLotSize;
+    double   m_defaultSpreadLimit;
+    double   m_currentSpread;
+    double   m_spreadMultiplier;
+    double   m_defaultPipValue;
+    double   m_pipValue;
+    double   m_spreadAverage;
+    
+    // Trailing parameters
+    double   m_trailingGap;
+    double   m_trailingLimit;
+    double   m_trailingAmount;
+    double   m_defaultGapValue;
+    double   m_stopRange;
+    double   m_maxTrailingDistance;
+    double   m_minTrailingStep;
+    double   m_trailingStopDistance;
+    
+    // Market variables
+    int      m_digits;
+    double   m_point;
+    double   m_orderLots;
+    datetime m_lastTickTime;
+    int      m_tickCounter;
+    int      m_priceCheckCounter;
+    double   m_spreadHistory[];
+    int      m_spreadHistoryCount;
+
+public:
+    CSakhaAwal(void);
+    ~CSakhaAwal(void);
+    
+    bool     Init(void);
+    void     ProcessTrading(void);
+    void     Deinit(const int reason);
+
+private:
+    bool     IsTradeAllowed(void);
+    bool     ValidateTradingParameters(void);
+    bool     CalculateLotSize(void);
+    bool     ProcessPosition(const ulong ticket, const double askWithCommission, 
+                           const double bidWithCommission);
+    bool     ProcessBuyTrailingStop(const ulong ticket, const double askWithCommission);
+    bool     ProcessSellTrailingStop(const ulong ticket, const double bidWithCommission);
+    bool     ProcessBuyStopOrder(const double askWithCommission);
+    bool     ProcessSellStopOrder(const double bidWithCommission);
+    void     ProcessSignalAndTrade(const int signalDirection, const double ask, 
+                                  const double bid);
+    void     ProcessTrailingStops(const double ask, const double bid);
+    bool     CheckSpreadConditions(const double currentSpread);
+    void     DeleteAllOrders(void);
+    void     DisplayStatusMessages(const int signalDirection, const int activePositions, 
+                                 const double spread);
+    double   CalculateStopRange(void);
+    datetime CalculateExpirationTime(void);
+    bool     CalculateIndicatorValues(double &upperBand, double &lowerBand);
+    int      GenerateSignal(const double bid, const double candleRange, 
+                           const double upperBand, const double lowerBand);
+    void     UpdateSpreadHistory(const double spreadValue);
+    double   CalculateAverageSpread(void);
+    double   NormalizePrice(const double price) { return m_symbol.NormalizePrice(price); }
+    void     PrintFormattedMessage(const string message) 
+    { 
+        if(m_isDebugMode) Print(message); 
+    }
+};
+
+// Global Expert variable
+CSakhaAwal ExtExpert;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                    |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+    Print("=== ", __FILE__, " ===");
+    Print("Sakha Expert Advisor - Version 1.00");
+    return ExtExpert.Init();
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                  |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+    ExtExpert.Deinit(reason);
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                              |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+    static datetime lastBar = 0;
+    datetime currentBar = iTime(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(lastBar != currentBar)
+    {
+        lastBar = currentBar;
+        ExtExpert.ProcessTrading();
+    }
+}
+//+------------------------------------------------------------------+
+//| Constructor implementation                                         |
+//+------------------------------------------------------------------+
+CSakhaAwal::CSakhaAwal(void) : 
+    ROBOT_NAME("SakhaAwal"),
+    CONFIG_NAME("Default")
+{
+    m_isDebugMode = true;
+    m_isDisplayTrades = true;
+    m_isTrailingStopEnabled = InpIsTrailingStopEnabled;
+    m_isStopOrderEnabled = true;
+    m_isMoneyManagementEnabled = true;
+    m_isTickProcessingEnabled = true;
+    m_isSpreadCheckEnabled = true;
+    m_useTrailingStop = true;
+    
+    m_defaultCandleRange = 18.0;
+    m_defaultLotSize = 0.1;
+    m_minLotSize = 0.01;
+    m_maxLotSize = 100.0;
+    m_defaultSpreadLimit = InpMaxSpread;
+    m_currentSpread = InpMaxSpread;
+    m_spreadMultiplier = 0.4;
+    m_defaultPipValue = 0.0;
+    m_pipValue = 0.0;
+    m_spreadAverage = 0.0;
+    
+    m_trailingGap = 1.0;
+    m_trailingLimit = 2.0;
+    m_trailingAmount = InpTrailingStopPoints;
+    m_defaultGapValue = 0.0;
+    m_stopRange = 0.0;
+    m_maxTrailingDistance = 4.0;
+    m_minTrailingStep = 0.5;
+    m_trailingStopDistance = InpStopDistance;
+    
+    m_digits = 0;
+    m_point = 0.0;
+    m_orderLots = 0.0;
+    m_lastTickTime = 0;
+    m_tickCounter = 0;
+    m_priceCheckCounter = 0;
+    m_spreadHistoryCount = 0;
+    
+    ArrayResize(m_spreadHistory, 30);
+    ArrayInitialize(m_spreadHistory, 0.0);
+}
+
+//+------------------------------------------------------------------+
+//| Destructor                                                        |
+//+------------------------------------------------------------------+
+CSakhaAwal::~CSakhaAwal(void)
+{
+    // Cleanup
+}
+
+//+------------------------------------------------------------------+
+//| Expert initialization method                                      |
+//+------------------------------------------------------------------+
+bool CSakhaAwal::Init(void)
+{
+    // Initialize symbol info
+    if(!m_symbol.Name(_Symbol))
+    {
+        Print("Error initializing symbol");
+        return false;
+    }
+    
+    // Set trading parameters
+    m_trade.SetDeviationInPoints(0);
+    m_trade.SetExpertMagicNumber(InpMagicNumber);
+    m_trade.SetMarginMode();
+    m_trade.SetTypeFillingBySymbol(m_symbol.Name());
+    
+    // Initialize digits and point
+    m_digits = m_symbol.Digits();
+    m_point = m_symbol.Point();
+    m_pipValue = m_point * (m_digits == 3 || m_digits == 5 ? 10 : 1);
+    
+    // Validate parameters
+    if(!ValidateTradingParameters())
+    {
+        Print("Error in trading parameters");
+        return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Validate trading parameters                                       |
+//+------------------------------------------------------------------+
+bool CSakhaAwal::ValidateTradingParameters(void)
+{
+    if(InpRiskPercentage <= 0.0 || InpRiskPercentage > 100.0)
+    {
+        Print("Invalid risk percentage: ", InpRiskPercentage);
+        return false;
+    }
+    
+    if(InpMaxSpread <= 0.0)
+    {
+        Print("Invalid maximum spread: ", InpMaxSpread);
+        return false;
+    }
+    
+    if(InpStopDistance <= 0.0)
+    {
+        Print("Invalid stop distance: ", InpStopDistance);
+        return false;
+    }
+    
+    if(InpStopLossPoints <= 0.0)
+    {
+        Print("Invalid stop loss points: ", InpStopLossPoints);
+        return false;
+    }
+    
+    if(InpTakeProfitPoints <= 0.0)
+    {
+        Print("Invalid take profit points: ", InpTakeProfitPoints);
+        return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Main trading logic                                               |
+//+------------------------------------------------------------------+
+void CSakhaAwal::ProcessTrading(void)
+{
+    if(!IsTradeAllowed())
+        return;
+        
+    if(!m_symbol.RefreshRates())
+    {
+        Print("Error refreshing rates");
+        return;
+    }
+    
+    double ask = m_symbol.Ask();
+    double bid = m_symbol.Bid();
+    double spread = ask - bid;
+    
+    // Check spread conditions
+    if(!CheckSpreadConditions(spread))
+        return;
+        
+    // Calculate trading levels
+    double upperBand = 0.0, lowerBand = 0.0;
+    if(!CalculateIndicatorValues(upperBand, lowerBand))
+        return;
+        
+    double candleRange = iHigh(m_symbol.Name(), PERIOD_CURRENT, 1) - 
+                        iLow(m_symbol.Name(), PERIOD_CURRENT, 1);
+                        
+    int signalDirection = GenerateSignal(bid, candleRange, upperBand, lowerBand);
+    
+    // Process existing positions
+    ProcessTrailingStops(ask, bid);
+    
+    // Process new trades
+    if(PositionsTotal() == 0 && OrdersTotal() == 0)
+    {
+        ProcessSignalAndTrade(signalDirection, ask, bid);
+    }
+    
+    // Update display
+    if(m_isDisplayTrades)
+    {
+        DisplayStatusMessages(signalDirection, PositionsTotal(), spread);
+    }
+}
+//+------------------------------------------------------------------+
+//| Check if trading is allowed                                       |
+//+------------------------------------------------------------------+
+bool CSakhaAwal::IsTradeAllowed(void)
+{
+    if(!m_symbol.SessionTrade())
+    {
+        PrintFormattedMessage("Trading session is closed");
+        return false;
+    }
+    
+    MqlDateTime dt;
+    TimeCurrent(dt);
+    
+    if(InpIsFridayOff && dt.day_of_week == FRIDAY)
+    {
+        PrintFormattedMessage("Friday trading is disabled");
+        return false;
+    }
+    
+    if(InpIsMondayOff && dt.day_of_week == MONDAY)
+    {
+        PrintFormattedMessage("Monday trading is disabled");
+        return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate indicator values                                        |
+//+------------------------------------------------------------------+
+bool CSakhaAwal::CalculateIndicatorValues(double &upperBand, double &lowerBand)
+{
+    switch(InpSelectedIndicator)
+    {
+        case 1: // Moving Average
+            double maValue = iMA(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
+                               InpIndicatorShift, MODE_SMA, PRICE_CLOSE, 0);
+            if(maValue == 0) return false;
+            upperBand = maValue + m_defaultCandleRange * m_pipValue;
+            lowerBand = maValue - m_defaultCandleRange * m_pipValue;
+            break;
+            
+        case 2: // Bollinger Bands
+            double bbMiddle = iBands(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
+                                   2, 0, PRICE_CLOSE, MODE_MAIN, 0);
+            upperBand = iBands(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
+                             2, 0, PRICE_CLOSE, MODE_UPPER, 0);
+            lowerBand = iBands(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
+                             2, 0, PRICE_CLOSE, MODE_LOWER, 0);
+            if(bbMiddle == 0 || upperBand == 0 || lowerBand == 0) return false;
+            break;
+            
+        case 3: // Envelopes
+            double envBase = iMA(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
+                               0, MODE_SMA, PRICE_CLOSE, 0);
+            if(envBase == 0) return false;
+            double deviation = 0.1; // 0.1% deviation
+            upperBand = envBase * (1 + deviation);
+            lowerBand = envBase * (1 - deviation);
+            break;
+            
+        default:
+            Print("Invalid indicator selection");
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Generate trading signals                                          |
+//+------------------------------------------------------------------+
+int CSakhaAwal::GenerateSignal(const double bid, const double candleRange,
+                              const double upperBand, const double lowerBand)
+{
+    if(candleRange == 0)
+        return 0;
+        
+    double normalizedRange = NormalizePrice(candleRange);
+    
+    if(normalizedRange > m_defaultCandleRange * m_pipValue)
+        return 0;
+        
+    if(InpUseBreakConfirmation)
+    {
+        // Buy signal
+        if(bid < lowerBand && normalizedRange < m_defaultCandleRange * m_pipValue)
+            return -1;
+            
+        // Sell signal
+        if(bid > upperBand && normalizedRange < m_defaultCandleRange * m_pipValue)
+            return 1;
+    }
+    else
+    {
+        // Simple price cross signals
+        if(bid < lowerBand)
+            return -1;
+        if(bid > upperBand)
+            return 1;
+    }
+    
+    return 0;
+}
+
+//+------------------------------------------------------------------+
+//| Process position modifications                                    |
+//+------------------------------------------------------------------+
+bool CSakhaAwal::ProcessPosition(const ulong ticket, const double askWithCommission,
+                               const double bidWithCommission)
+{
+    if(!m_position.SelectByTicket(ticket))
+        return false;
+        
+    // Check profit target
+    if(InpClosePercentage > 0)
+    {
+        double profitTarget = InpInitialCapital * (InpClosePercentage / 100.0);
+        if(m_position.Profit() >= profitTarget)
+        {
+            return m_trade.PositionClose(ticket);
+        }
+    }
+    
+    // Process trailing stop
+    if(m_useTrailingStop && InpIsTrailingStopEnabled)
+    {
+        switch(m_position.PositionType())
+        {
+            case POSITION_TYPE_BUY:
+                return ProcessBuyTrailingStop(ticket, askWithCommission);
+                
+            case POSITION_TYPE_SELL:
+                return ProcessSellTrailingStop(ticket, bidWithCommission);
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Update spread history                                            |
+//+------------------------------------------------------------------+
+void CSakhaAwal::UpdateSpreadHistory(const double spreadValue)
+{
+    if(m_spreadHistoryCount < ArraySize(m_spreadHistory))
+    {
+        m_spreadHistory[m_spreadHistoryCount++] = spreadValue;
+    }
+    else
+    {
+        for(int i = 0; i < ArraySize(m_spreadHistory) - 1; i++)
+        {
+            m_spreadHistory[i] = m_spreadHistory[i + 1];
+        }
+        m_spreadHistory[ArraySize(m_spreadHistory) - 1] = spreadValue;
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Calculate average spread                                         |
+//+------------------------------------------------------------------+
+double CSakhaAwal::CalculateAverageSpread(void)
+{
+    if(m_spreadHistoryCount == 0)
+        return 0.0;
+        
+    double sum = 0.0;
+    for(int i = 0; i < m_spreadHistoryCount; i++)
+    {
+        sum += m_spreadHistory[i];
+    }
+    
+    return sum / m_spreadHistoryCount;
+}
+//+------------------------------------------------------------------+
+//| Process buy trailing stop                                         |
+//+------------------------------------------------------------------+
+bool CSakhaAwal::ProcessBuyTrailingStop(const ulong ticket, const double askWithCommission)
+{
+    double currentStopLoss = m_position.StopLoss();
+    double currentTakeProfit = m_position.TakeProfit();
+    
+    if(m_trailingAmount > 0 && 
+       currentTakeProfit < NormalizePrice(askWithCommission + m_trailingAmount))
+    {
+        double newStopLoss = NormalizePrice(m_symbol.Bid() - m_trailingAmount);
+        double newTakeProfit = NormalizePrice(askWithCommission + m_trailingAmount);
+        
+        if(InpUseStrictStopLoss)
+        {
+            if(newStopLoss > currentStopLoss)
+            {
+                return m_trade.PositionModify(ticket, newStopLoss, newTakeProfit);
+            }
+        }
+        else
+        {
+            if(m_position.PriceOpen() < newStopLoss)
+            {
+                return m_trade.PositionModify(ticket, newStopLoss, newTakeProfit);
+            }
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Process sell trailing stop                                        |
+//+------------------------------------------------------------------+
+bool CSakhaAwal::ProcessSellTrailingStop(const ulong ticket, const double bidWithCommission)
+{
+    double currentStopLoss = m_position.StopLoss();
+    double currentTakeProfit = m_position.TakeProfit();
+    
+    if(m_trailingAmount > 0 && 
+       currentTakeProfit > NormalizePrice(bidWithCommission - m_trailingAmount))
+    {
+        double newStopLoss = NormalizePrice(m_symbol.Ask() + m_trailingAmount);
+        double newTakeProfit = NormalizePrice(bidWithCommission - m_trailingAmount);
+        
+        if(InpUseStrictStopLoss)
+        {
+            if(newStopLoss < currentStopLoss || currentStopLoss == 0)
+            {
+                return m_trade.PositionModify(ticket, newStopLoss, newTakeProfit);
+            }
+        }
+        else
+        {
+            if(m_position.PriceOpen() > newStopLoss)
+            {
+                return m_trade.PositionModify(ticket, newStopLoss, newTakeProfit);
+            }
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate lot size based on risk management                       |
+//+------------------------------------------------------------------+
+bool CSakhaAwal::CalculateLotSize(void)
+{
+    if(InpFixedLotSize > 0.0)
+    {
+        m_defaultLotSize = InpFixedLotSize;
+        return true;
+    }
+    
+    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+    if(balance <= 0)
+        return false;
+        
+    double riskAmount = balance * InpRiskPercentage / 100.0;
+    double tickValue = m_symbol.TickValue();
+    
+    if(tickValue == 0)
+        return false;
+        
+    double lotSize = riskAmount / (InpStopLossPoints * tickValue);
+    
+    // Normalize lot size
+    lotSize = MathFloor(lotSize / m_symbol.LotsStep()) * m_symbol.LotsStep();
+    
+    // Check limits
+    lotSize = MathMax(m_symbol.LotsMin(), MathMin(m_symbol.LotsMax(), lotSize));
+    
+    m_defaultLotSize = lotSize;
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Process new orders                                               |
+//+------------------------------------------------------------------+
+void CSakhaAwal::ProcessSignalAndTrade(const int signalDirection, 
+                                      const double ask, 
+                                      const double bid)
+{
+    if(!CalculateLotSize())
+        return;
+        
+    double stopLevel = m_symbol.StopsLevel() * m_point;
+    
+    if(signalDirection < 0) // Buy Signal
+    {
+        double stopLoss = NormalizePrice(bid - InpStopLossPoints * m_pipValue);
+        double takeProfit = NormalizePrice(ask + InpTakeProfitPoints * m_pipValue);
+        
+        if(ask - stopLoss >= stopLevel && takeProfit - ask >= stopLevel)
+        {
+            m_trade.Buy(m_defaultLotSize, m_symbol.Name(), ask, stopLoss, takeProfit);
+        }
+    }
+    else if(signalDirection > 0) // Sell Signal
+    {
+        double stopLoss = NormalizePrice(ask + InpStopLossPoints * m_pipValue);
+        double takeProfit = NormalizePrice(bid - InpTakeProfitPoints * m_pipValue);
+        
+        if(stopLoss - bid >= stopLevel && bid - takeProfit >= stopLevel)
+        {
+            m_trade.Sell(m_defaultLotSize, m_symbol.Name(), bid, stopLoss, takeProfit);
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Display status messages                                          |
+//+------------------------------------------------------------------+
+void CSakhaAwal::DisplayStatusMessages(const int signalDirection, 
+                                     const int activePositions, 
+                                     const double spread)
+{
+    string status = "=== " + ROBOT_NAME + " Status ===\n";
+    status += "Time: " + TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES|TIME_SECONDS) + "\n";
+    status += "Symbol: " + m_symbol.Name() + "\n";
+    status += "Spread: " + DoubleToString(spread/m_pipValue, 1) + " pips\n";
+    status += "Signal: " + (signalDirection < 0 ? "BUY" : 
+              signalDirection > 0 ? "SELL" : "NEUTRAL") + "\n";
+    status += "Active Positions: " + IntegerToString(activePositions) + "\n";
+    status += "Balance: " + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2) + "\n";
+    status += "Equity: " + DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2) + "\n";
+    status += "Floating P/L: " + DoubleToString(AccountInfoDouble(ACCOUNT_PROFIT), 2) + "\n";
+    
+    Comment(status);
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void CSakhaAwal::Deinit(const int reason)
+{
+    Comment("");
+    Print("Expert removed. Reason code: ", reason);
+}
