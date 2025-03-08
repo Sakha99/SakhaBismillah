@@ -9,8 +9,8 @@
 #property strict
 
 // Global variables
-string ROBOT_NAME = "Robot";
-string CONFIG_NAME = "Konfigurasi";
+string ROBOT_NAME = "SakhaBismillah";
+string CONFIG_NAME = "Config";
 extern bool UseBreakConfirmation = FALSE;
 extern string IndicatorDescription = "1=MA,2=BB,3=Envelopes";
 extern int SelectedIndicator = 3;
@@ -18,8 +18,8 @@ bool isDebugMode = FALSE;
 bool isDisplayTrades = FALSE;
 bool isTrailingStopEnabled = TRUE;
 bool isStopOrderEnabled = FALSE;
-extern int MagicNumber = 1245986;
-extern string ExpertName = "fxindo.com";
+extern int MagicNumber = 41188;
+extern string ExpertName = "SakhaBismillah";
 extern double CandleLimit = 10.0;
 double defaultCandleRange = 18.0;
 extern double StopDistance = 3.0;
