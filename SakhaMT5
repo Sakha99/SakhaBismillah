@@ -12,6 +12,18 @@
 #include <Trade/OrderInfo.mqh>
 #include <Trade/PositionInfo.mqh>
 
+// Add these definitions after include files
+#define MODE_SMA     0       // Simple moving average
+#define MODE_EMA     1       // Exponential moving average 
+#define MODE_SMMA    2       // Smoothed moving average
+#define MODE_LWMA    3       // Linear weighted moving average
+
+#define MODE_MAIN    0       // Main line of the indicator
+#define MODE_UPPER   1       // Upper band
+#define MODE_LOWER   2       // Lower band
+
+#define PRICE_CLOSE  0       // Close price
+
 // Input Parameters
 input group "=== Risk Management Settings ==="
 input double   InpRiskPercentage     = 2.0;          // Risk per trade (%)
@@ -387,30 +399,71 @@ bool CSakhaAwal::CalculateIndicatorValues(double &upperBand, double &lowerBand)
     switch(InpSelectedIndicator)
     {
         case 1: // Moving Average
-            double maValue = iMA(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
-                               InpIndicatorShift, MODE_SMA, PRICE_CLOSE, 0);
-            if(maValue == 0) return false;
-            upperBand = maValue + m_defaultCandleRange * m_pipValue;
-            lowerBand = maValue - m_defaultCandleRange * m_pipValue;
+            {
+                int maHandle = iMA(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
+                                 InpIndicatorShift, MODE_SMA, PRICE_CLOSE);
+                if(maHandle == INVALID_HANDLE) return false;
+                
+                double maArray[];
+                ArraySetAsSeries(maArray, true);
+                if(CopyBuffer(maHandle, 0, 0, 1, maArray) <= 0)
+                {
+                    IndicatorRelease(maHandle);
+                    return false;
+                }
+                
+                double maValue = maArray[0];
+                upperBand = maValue + m_defaultCandleRange * m_pipValue;
+                lowerBand = maValue - m_defaultCandleRange * m_pipValue;
+                IndicatorRelease(maHandle);
+            }
             break;
             
         case 2: // Bollinger Bands
-            double bbMiddle = iBands(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
-                                   2, 0, PRICE_CLOSE, MODE_MAIN, 0);
-            upperBand = iBands(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
-                             2, 0, PRICE_CLOSE, MODE_UPPER, 0);
-            lowerBand = iBands(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
-                             2, 0, PRICE_CLOSE, MODE_LOWER, 0);
-            if(bbMiddle == 0 || upperBand == 0 || lowerBand == 0) return false;
+            {
+                int bbHandle = iBands(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
+                                    0, 2, PRICE_CLOSE);
+                if(bbHandle == INVALID_HANDLE) return false;
+                
+                double upperBuffer[], middleBuffer[], lowerBuffer[];
+                ArraySetAsSeries(upperBuffer, true);
+                ArraySetAsSeries(middleBuffer, true);
+                ArraySetAsSeries(lowerBuffer, true);
+                
+                if(CopyBuffer(bbHandle, MODE_UPPER, 0, 1, upperBuffer) <= 0 ||
+                   CopyBuffer(bbHandle, MODE_MAIN, 0, 1, middleBuffer) <= 0 ||
+                   CopyBuffer(bbHandle, MODE_LOWER, 0, 1, lowerBuffer) <= 0)
+                {
+                    IndicatorRelease(bbHandle);
+                    return false;
+                }
+                
+                upperBand = upperBuffer[0];
+                lowerBand = lowerBuffer[0];
+                IndicatorRelease(bbHandle);
+            }
             break;
             
         case 3: // Envelopes
-            double envBase = iMA(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
-                               0, MODE_SMA, PRICE_CLOSE, 0);
-            if(envBase == 0) return false;
-            double deviation = 0.1; // 0.1% deviation
-            upperBand = envBase * (1 + deviation);
-            lowerBand = envBase * (1 - deviation);
+            {
+                int maHandle = iMA(m_symbol.Name(), PERIOD_CURRENT, InpIndicatorPeriod, 
+                                 0, MODE_SMA, PRICE_CLOSE);
+                if(maHandle == INVALID_HANDLE) return false;
+                
+                double maArray[];
+                ArraySetAsSeries(maArray, true);
+                if(CopyBuffer(maHandle, 0, 0, 1, maArray) <= 0)
+                {
+                    IndicatorRelease(maHandle);
+                    return false;
+                }
+                
+                double envBase = maArray[0];
+                double deviation = 0.1; // 0.1% deviation
+                upperBand = envBase * (1 + deviation);
+                lowerBand = envBase * (1 - deviation);
+                IndicatorRelease(maHandle);
+            }
             break;
             
         default:
